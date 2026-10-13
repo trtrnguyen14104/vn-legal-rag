@@ -1,0 +1,49 @@
+[project]
+name = "vn-legal-rag"
+version = "0.1.0"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn[standard]>=0.34,<1",
+  "pydantic-settings>=2.8,<3", "psycopg[binary,pool]>=3.2,<4",
+  "redis>=5,<7", "celery>=5.4,<6", "httpx>=0.28,<1",
+  "google-auth>=2.38,<3", "requests>=2.32,<3", "beautifulsoup4>=4.13,<5",
+  "huggingface-hub>=1.6,<2", "prometheus-client>=0.21,<1",
+  "tzdata>=2025.1", "pypdf>=5,<7", "python-docx>=1.1,<2", "pyarrow>=19,<24"
+]
+[project.optional-dependencies]
+embedding = ["sentence-transformers>=3.4,<6", "py-vncorenlp>=0.1.4,<1"]
+cpu = ["torch>=2.8,<3"]
+cuda = ["torch>=2.8,<3"]
+benchmark = ["FlagEmbedding>=1.3,<2"]
+dev = ["pytest>=8,<10", "ruff>=0.11,<1"]
+[project.scripts]
+legal-rag = "legal_rag.cli:main"
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+[tool.hatch.build.targets.wheel]
+packages = ["src/legal_rag"]
+[tool.hatch.build.targets.wheel.force-include]
+migrations = "legal_rag/_migrations"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501", "B008"]
+
+[tool.uv]
+conflicts = [[{extra = "cpu"}, {extra = "cuda"}]]
+[tool.uv.sources]
+torch = [{index = "pytorch-cpu", extra = "cpu"}, {index = "pytorch-cu128", extra = "cuda"}]
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+

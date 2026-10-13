@@ -1,0 +1,126 @@
+name: vietnamese-legal-rag
+x-backend: &backend
+  build:
+    context: ./backend
+    target: base
+  env_file: .env
+  environment:
+    DATA_DIR: /data
+  volumes:
+    - legal-data:/data
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks:
+      default:
+        aliases: [postgres]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?required}
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping']
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+  migrate:
+    <<: *backend
+    command: [legal-rag, migrate]
+    restart: "no"
+  api:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+  query-worker:
+    <<: *backend
+    command: [celery, -A, legal_rag.tasks.celery_app:celery, worker, -Q, queries, --concurrency=2, --loglevel=WARNING]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+  ingestion-worker:
+    <<: *backend
+    command: [celery, -A, legal_rag.tasks.celery_app:celery, worker, -Q, ingestion, --concurrency=1, --loglevel=WARNING]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      embedding:
+        condition: service_healthy
+  scheduler:
+    <<: *backend
+    command: [celery, -A, legal_rag.tasks.celery_app:celery, beat, --schedule=/data/celerybeat-schedule, --loglevel=WARNING]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+  embedding:
+    build:
+      context: ./backend
+      target: embedding
+    env_file: .env
+    environment:
+      HF_HOME: /models/huggingface
+      VNCORENLP_DIR: /models/vncorenlp
+    volumes: [model-data:/models]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os,urllib.request; r=urllib.request.Request('http://localhost:8001/health',headers={'Authorization':'Bearer '+os.environ['EMBEDDING_API_KEY']}); urllib.request.urlopen(r,timeout=5).close()"
+      interval: 10s
+      timeout: 8s
+      start_period: 180s
+      retries: 30
+  model-init:
+    build:
+      context: ./backend
+      target: embedding
+    env_file: .env
+    volumes: [model-data:/models]
+    command: [legal-rag, download-vncorenlp]
+    profiles: [setup]
+  client:
+    build: ./frontend
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    depends_on: [api]
+    restart: unless-stopped
+  gateway:
+    image: caddy:2-alpine
+    ports: ["3000:80"]
+    volumes: [./deploy/Caddyfile.local:/etc/caddy/Caddyfile:ro]
+    depends_on: [client, api]
+    restart: unless-stopped
+volumes:
+  postgres-data:
+  redis-data:
+  legal-data:
+  model-data:
+

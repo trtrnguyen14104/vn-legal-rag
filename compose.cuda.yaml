@@ -1,0 +1,8 @@
+services:
+  embedding:
+    build:
+      args:
+        TORCH_EXTRA: cuda
+    environment:
+      EMBEDDING_DEVICE: cuda
+    gpus: all

@@ -1,0 +1,20 @@
+{$SITE_ADDRESS} {
+    request_body {
+        max_size 32KB
+    }
+    handle /api/* {
+        reverse_proxy api:8000 {
+            flush_interval -1
+        }
+    }
+    handle {
+        reverse_proxy client:3000
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Frame-Options DENY
+        X-Content-Type-Options nosniff
+        Referrer-Policy same-origin
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    }
+}

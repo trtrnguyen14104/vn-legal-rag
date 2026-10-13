@@ -1,0 +1,13 @@
+services:
+  gateway:
+    ports: !override ["80:80", "443:443"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?required}
+    volumes: !override
+      - ./deploy/Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+volumes:
+  caddy-data:
+  caddy-config:
+
